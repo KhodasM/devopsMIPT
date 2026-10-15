@@ -1,39 +1,83 @@
 # ДЗ #1: Фундамент DevOps-инфраструктуры
 
-Проект содержит базовый каркас сквозного развёртывания: Terraform создаёт инфраструктуру, Ansible настраивает хост, Bash проверяет состояние сервиса, а Docker Compose запускает связку reverse proxy и приложения.
+Проект выполняется в порядке, указанном преподавателем: сначала Ansible (пункт 3), затем Terraform с Docker provider (пункт 2), после этого мониторинг и Docker Compose.
 
 ## Структура
 
 ```text
-terraform/                 # IaC (провайдер и ресурсы выбранной среды)
+terraform/                 # Terraform + kreuzwerker/docker
 ansible/inventory.ini.example
 ansible/setup_host.yml     # Docker, deployer и автозапуск
-compose/                   # nginx reverse proxy + app
+compose/                   # nginx reverse proxy + app в отдельной сети Compose
 scripts/monitor.sh         # проверка systemd и ошибок syslog
 ```
 
-## Порядок запуска
+## Этап 1. Ansible
 
-1. Выбрать облако или локальный гипервизор и заполнить `terraform/terraform.tfvars`.
-2. Выполнить `terraform init`, `terraform validate`, `terraform plan`, `terraform apply`.
-3. Заполнить `ansible/inventory.ini` IP-адресом VM и проверить SSH-доступ.
-4. Запустить `ansible-playbook -i ansible/inventory.ini ansible/setup_host.yml` два раза. Во втором запуске ожидается `changed=0` для уже настроенных ресурсов.
-5. Скопировать каталог `compose` на VM в `/opt/app` и выполнить `docker compose up -d`.
-6. Проверить `docker compose ps`, `curl http://<VM_IP>` и `scripts/monitor.sh docker`.
-
-## Проверки для отчёта
-
-Сохраните в `screenshots/` или вставьте в этот README результаты:
+1. Установить Ansible на управляющей машине или использовать WSL/Linux.
+2. Скопировать `ansible/inventory.ini.example` в `ansible/inventory.ini` и указать адрес Linux-хоста.
+3. Установить коллекцию:
 
 ```bash
-terraform state list
-ansible-playbook -i ansible/inventory.ini ansible/setup_host.yml   # второй запуск
-./scripts/monitor.sh docker
-docker compose ps
-curl http://<VM_IP>
+ansible-galaxy collection install -r ansible/requirements.yml
 ```
 
-## Архитектурные решения
+4. Запустить playbook два раза:
 
-Сеть и VM описываются декларативно Terraform, конфигурация хоста выполняется идемпотентным Ansible, а приложение запускается одинаково через Compose. SSH должен быть разрешён только с вашего публичного IP и только по ключу.
+```bash
+ansible-playbook -i ansible/inventory.ini ansible/setup_host.yml
+ansible-playbook -i ansible/inventory.ini ansible/setup_host.yml
+```
 
+Во втором запуске для уже настроенных задач ожидается `changed=0`.
+
+## Этап 2. Terraform + Docker provider
+
+Terraform создаёт отдельные Docker network, volume и nginx-контейнер. Nginx доступен на нестандартном порту `8080`, а контейнеры Compose работают в своей сети `compose_app_net`.
+
+```powershell
+cd terraform
+Copy-Item terraform.tfvars.example terraform.tfvars
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+curl.exe -i http://localhost:8080
+terraform state list
+```
+
+## Этап 3. Мониторинг
+
+На Linux-хосте:
+
+```bash
+chmod +x scripts/monitor.sh
+./scripts/monitor.sh docker
+```
+
+Если сервис неактивен, скрипт печатает последние 10 строк `journalctl`; также считает ошибки в `/var/log/syslog` за текущий и предыдущий час.
+
+## Этап 4. Docker Compose
+
+Compose намеренно использует отдельную сеть для `nginx` и `app`:
+
+```bash
+cd compose
+docker compose up -d
+docker compose ps
+curl -i http://localhost
+```
+
+## Git workflow
+
+```bash
+git switch -c feature/infra-setup
+git add .
+git commit -m "feat: add Ansible and Docker Terraform infrastructure"
+git push -u origin feature/infra-setup
+```
+
+После проверки создайте Pull Request из `feature/infra-setup` в `main`, выполните само-ревью, после merge создайте тег `v0.1.0`.
+
+Не коммитьте `terraform.tfvars`, ключи, `.terraform/` или `*.tfstate`.

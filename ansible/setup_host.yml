@@ -6,6 +6,10 @@
 
   vars:
     deployer_public_key: "{{ lookup('env', 'DEPLOYER_SSH_PUBLIC_KEY') | default('', true) }}"
+    docker_arch_map:
+      x86_64: amd64
+      aarch64: arm64
+      armv7l: armhf
 
   tasks:
     - name: Install base packages
@@ -14,15 +18,44 @@
           - ca-certificates
           - curl
           - gnupg
-          - lsb-release
         state: present
         update_cache: true
         cache_valid_time: 3600
 
+    - name: Create Docker keyrings directory
+      ansible.builtin.file:
+        path: /etc/apt/keyrings
+        state: directory
+        owner: root
+        group: root
+        mode: '0755'
+
+    - name: Install Docker repository key
+      ansible.builtin.get_url:
+        url: https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}/gpg
+        dest: /etc/apt/keyrings/docker.asc
+        owner: root
+        group: root
+        mode: '0644'
+
+    - name: Configure Docker apt repository
+      ansible.builtin.apt_repository:
+        repo: >-
+          deb [arch={{ docker_arch_map.get(ansible_facts.architecture, ansible_facts.architecture) }}
+          signed-by=/etc/apt/keyrings/docker.asc]
+          https://download.docker.com/linux/{{ ansible_facts.distribution | lower }}
+          {{ ansible_facts.distribution_release }} stable
+        filename: docker
+        state: present
+        update_cache: true
+
     - name: Install Docker Engine and Compose plugin
       ansible.builtin.apt:
         name:
-          - docker.io
+          - docker-ce
+          - docker-ce-cli
+          - containerd.io
+          - docker-buildx-plugin
           - docker-compose-plugin
         state: present
 
