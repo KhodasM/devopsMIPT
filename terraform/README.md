@@ -1,6 +1,29 @@
-# Terraform
+# Terraform + Docker
 
-Этот каталог будет заполнен ресурсами после выбора среды: MWS или локальный VirtualBox/Proxmox. Провайдеры и сетевые ресурсы у этих вариантов разные, поэтому нельзя безопасно запускать `terraform apply` до выбора варианта и получения параметров доступа.
+Terraform управляет отдельным nginx-контейнером. Ресурсы: образ, новая bridge-сеть, named volume и контейнер. Порт `8080` на хосте пробрасывается в порт `80` контейнера.
 
-После выбора среды здесь появятся `versions.tf`, `variables.tf`, `main.tf`, `outputs.tf` и пример `terraform.tfvars` без секретов.
+## Запуск
 
+Docker Desktop должен быть запущен.
+
+```powershell
+cd C:\Users\khoda\devopsMIPT\terraform
+Copy-Item terraform.tfvars.example terraform.tfvars
+terraform init
+terraform fmt -recursive
+terraform validate
+terraform plan
+terraform apply
+curl.exe -i http://localhost:8080
+terraform state list
+```
+
+Ожидаемый ответ начинается с `HTTP/1.1 200 OK` и содержит стандартную страницу nginx.
+
+Удаление созданных Docker-ресурсов после проверки:
+
+```powershell
+terraform destroy
+```
+
+`terraform.tfvars`, `.terraform/` и `*.tfstate` не должны попадать в Git.
